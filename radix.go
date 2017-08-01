@@ -6,9 +6,9 @@ import (
 )
 
 var (
-	ErrNextNodeNotFound = errors.New("can not find next node")
-	ErrNodeLabel        = errors.New("node label required")
-	ErrNodeValue        = errors.New("node value required")
+	ErrNodeNotFound = errors.New("can not find node")
+	ErrNodeLabel    = errors.New("node label required")
+	ErrNodeValue    = errors.New("node value required")
 )
 
 type (
@@ -25,6 +25,36 @@ type (
 	}
 )
 
+func (t *Tree) Get(s string) (interface{}, error) {
+	t.rwMux.RLock()
+	defer t.rwMux.RUnlock()
+
+	r, lr := stringToRune(s)
+	if nil == t.root || t.root.label != r[0] {
+		return nil, ErrNodeNotFound
+	}
+
+	return t.lookup(r, t.root, 1, lr)
+}
+
+// lookup method performs the actual search in the tree
+func (t *Tree) lookup(r []rune, prev *Node, i, l int) (interface{}, error) {
+	if i == l-1 {
+		if nil == prev.val {
+			return nil, ErrNodeNotFound
+		}
+
+		return prev.val, nil
+	}
+
+	n, err := prev.withLabel(r[i])
+	if nil != err {
+		return nil, ErrNodeNotFound
+	}
+
+	return t.lookup(r, n, i+1, l)
+}
+
 // Appends a string into the tree and attaches the value to the last node
 func (t *Tree) Add(s string, val interface{}) error {
 	if "" == s {
@@ -37,14 +67,13 @@ func (t *Tree) Add(s string, val interface{}) error {
 	t.rwMux.Lock()
 	defer t.rwMux.Unlock()
 
-	r := []rune(s)
+	r, lr := stringToRune(s)
 
 	if nil == t.root {
 		t.root = newNode(r[0], nil)
 	}
 
-	t.process(r, val, t.root, 1, len(r))
-	return nil
+	return t.process(r, val, t.root, 1, lr)
 }
 
 // process processes the given string
@@ -54,7 +83,7 @@ func (t *Tree) process(r []rune, v interface{}, prev *Node, i, l int) error {
 		return nil
 	}
 
-	n, err := prev.nextWithLabel(r[i])
+	n, err := prev.withLabel(r[i])
 	if nil != err {
 		n = newNode(r[i], nil)
 		prev.addNext(n)
@@ -63,18 +92,21 @@ func (t *Tree) process(r []rune, v interface{}, prev *Node, i, l int) error {
 	return t.process(r, v, n, i+1, l)
 }
 
-// nextWithLabel iterates through the next nodes,
-func (n *Node) nextWithLabel(r rune) (*Node, error) {
+// withLabel iterates through the next nodes,
+func (n *Node) withLabel(r rune) (*Node, error) {
+	// BenchmarkTree_Add-8   	  200000	      8522 ns/op	     248 B/op	       2 allocs/op
+	// BenchmarkTree_Get-8   	  200000	      8058 ns/op	     240 B/op	       1 allocs/op
+	//
 	for i := 0; i < len(n.next); i++ {
 		if r == n.next[i].label {
 			return n.next[i], nil
 		}
 	}
 
-	return nil, ErrNextNodeNotFound
+	return nil, ErrNodeNotFound
 }
 
-// nextWithLabel iterates through the next nodes,
+// withLabel iterates through the next nodes,
 func (n *Node) addNext(i *Node) {
 	n.next = append(n.next, i)
 }
@@ -91,4 +123,11 @@ func NewTree() *Tree {
 	return &Tree{
 		rwMux: &sync.RWMutex{},
 	}
+}
+
+func stringToRune(s string) ([]rune, int) {
+	r := []rune(s)
+	lr := len(r)
+
+	return r, lr
 }
