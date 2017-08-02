@@ -2,6 +2,7 @@ package radix
 
 import (
 	"errors"
+	"sort"
 	"sync"
 )
 
@@ -19,7 +20,7 @@ type (
 	}
 
 	Node struct {
-		label rune
+		label byte
 		next  []*Node
 
 		val interface{}
@@ -27,10 +28,7 @@ type (
 )
 
 func (t *Tree) Get(s string) (interface{}, error) {
-	t.rwMux.RLock()
-	defer t.rwMux.RUnlock()
-
-	r, lr := stringToRune(s)
+	r, lr := stringToBytes(s)
 	if nil == t.root || t.root.label != r[0] {
 		return nil, ErrNodeNotFound
 	}
@@ -39,7 +37,7 @@ func (t *Tree) Get(s string) (interface{}, error) {
 }
 
 // lookup method performs the actual search in the tree
-func (t *Tree) lookup(r []rune, prev *Node, i, l int) (interface{}, error) {
+func (t *Tree) lookup(r []byte, prev *Node, i, l int) (interface{}, error) {
 	if i == l-1 {
 		if nil == prev.val {
 			return nil, ErrNodeNotFound
@@ -67,7 +65,7 @@ func (t *Tree) Add(s string, val interface{}) error {
 	t.rwMux.Lock()
 	defer t.rwMux.Unlock()
 
-	r, lr := stringToRune(s)
+	r, lr := stringToBytes(s)
 
 	if nil == t.root {
 		t.root = newNode(r[0], nil)
@@ -77,7 +75,7 @@ func (t *Tree) Add(s string, val interface{}) error {
 }
 
 // process processes the given string
-func (t *Tree) process(r []rune, v interface{}, prev *Node, i, l int) error {
+func (t *Tree) process(r []byte, v interface{}, prev *Node, i, l int) error {
 	if i == l-1 {
 		if nil != prev.val {
 			return ErrDuplicateNode
@@ -96,21 +94,20 @@ func (t *Tree) process(r []rune, v interface{}, prev *Node, i, l int) error {
 }
 
 // withLabel iterates through the next nodes,
-func (n *Node) withLabel(r rune) (*Node, error) {
-	// BenchmarkTree_Add-8   	  200000	      8522 ns/op	     248 B/op	       2 allocs/op
-	// BenchmarkTree_Get-8   	  200000	      8058 ns/op	     240 B/op	       1 allocs/op
-	//
-	for i := 0; i < len(n.next); i++ {
-		if r == n.next[i].label {
-			return n.next[i], nil
-		}
+func (n *Node) withLabel(r byte) (*Node, error) {
+	nl := len(n.next)
+	id := sort.Search(nl, func(i int) bool {
+		return n.next[i].label >= r
+	})
+	if id < nl && n.next[id].label == r {
+		return n.next[id], nil
 	}
 
 	return nil, ErrNodeNotFound
 }
 
-func stringToRune(s string) ([]rune, int) {
-	r := []rune(s)
+func stringToBytes(s string) ([]byte, int) {
+	r := []byte(s)
 	lr := len(r)
 
 	return r, lr
@@ -119,9 +116,10 @@ func stringToRune(s string) ([]rune, int) {
 // withLabel iterates through the next nodes,
 func (n *Node) addNext(i *Node) {
 	n.next = append(n.next, i)
+	sort.Slice(n.next, func(i, j int) bool { return n.next[i].label < n.next[j].label })
 }
 
-func newNode(l rune, v interface{}) *Node {
+func newNode(l byte, v interface{}) *Node {
 	return &Node{
 		label: l,
 		val:   v,
