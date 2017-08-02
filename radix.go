@@ -6,9 +6,10 @@ import (
 )
 
 var (
-	ErrNodeNotFound = errors.New("can not find node")
-	ErrNodeLabel    = errors.New("node label required")
-	ErrNodeValue    = errors.New("node value required")
+	ErrNodeNotFound  = errors.New("can not find node")
+	ErrDuplicateNode = errors.New("duplicate node")
+	ErrNodeLabel     = errors.New("node label required")
+	ErrNodeValue     = errors.New("node value required")
 )
 
 type (
@@ -43,7 +44,6 @@ func (t *Tree) lookup(r []rune, prev *Node, i, l int) (interface{}, error) {
 		if nil == prev.val {
 			return nil, ErrNodeNotFound
 		}
-
 		return prev.val, nil
 	}
 
@@ -79,6 +79,9 @@ func (t *Tree) Add(s string, val interface{}) error {
 // process processes the given string
 func (t *Tree) process(r []rune, v interface{}, prev *Node, i, l int) error {
 	if i == l-1 {
+		if nil != prev.val {
+			return ErrDuplicateNode
+		}
 		prev.val = v
 		return nil
 	}
@@ -106,6 +109,13 @@ func (n *Node) withLabel(r rune) (*Node, error) {
 	return nil, ErrNodeNotFound
 }
 
+func stringToRune(s string) ([]rune, int) {
+	r := []rune(s)
+	lr := len(r)
+
+	return r, lr
+}
+
 // withLabel iterates through the next nodes,
 func (n *Node) addNext(i *Node) {
 	n.next = append(n.next, i)
@@ -123,11 +133,4 @@ func NewTree() *Tree {
 	return &Tree{
 		rwMux: &sync.RWMutex{},
 	}
-}
-
-func stringToRune(s string) ([]rune, int) {
-	r := []rune(s)
-	lr := len(r)
-
-	return r, lr
 }
